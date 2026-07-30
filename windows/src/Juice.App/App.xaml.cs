@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.Versioning;
 using Juice.Core.Monitoring;
 using Juice.App.Services;
@@ -10,6 +11,7 @@ using Juice.Core.Presentation;
 using Juice.Core.Storage;
 using Juice.Platform.Windows;
 using Microsoft.UI.Dispatching;
+using Microsoft.Windows.AppLifecycle;
 using Microsoft.UI.Xaml;
 using Windows.ApplicationModel.DataTransfer;
 
@@ -63,7 +65,33 @@ public partial class App : Application
     /// <param name="args">Details about the launch request and process.</param>
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        // One instance, however many times Juice is started.
+        //
+        // Nothing prevented a second copy before, which was harmless only because nothing
+        // started one: the startup task runs once at logon. Now that the package has a real
+        // icon and shows up in Start and in search, clicking it while Juice is already
+        // running is an ordinary thing to do, and it would have put a second icon in the
+        // notification area with its own sampling loop and its own handle on the history
+        // database.
+        //
+        // Redirecting hands the activation to the instance that already exists and lets
+        // this one exit before it builds anything at all.
+        var instance = AppInstance.FindOrRegisterForKey("juice");
+        if (!instance.IsCurrent)
+        {
+            instance.RedirectActivationToAsync(AppInstance.GetCurrent().GetActivatedEventArgs()).AsTask().Wait();
+            Process.GetCurrentProcess().Kill();
+            return;
+        }
+
         _ui = DispatcherQueue.GetForCurrentThread();
+
+        // A second start while this instance is alive means the same thing as clicking the
+        // icon: show the readout.
+        instance.Activated += (_, _) => _ui.TryEnqueue(() =>
+        {
+            if (!_flyout.IsOpen) ToggleFlyout();
+        });
 
         _settings = new JuiceSettings();
         _rates = new RateService(_settings);

@@ -349,7 +349,14 @@ public static class Program
                 "Could not measure power on this machine.", ExitFailed);
         }
 
-        var result = new EnergyAttributor().Attribute(first, second, firstProcesses, secondProcesses);
+        // The same resolver the tray application uses, so both front ends name apps
+        // identically. A ranking that says msedge in one place and Microsoft Edge in the
+        // other reads as two different measurements.
+        var displayNames = new AppDisplayNameResolver();
+        var attributor = new EnergyAttributor(
+            displayNameSelector: p => displayNames.Resolve(p.ProcessId, p.ProcessName));
+
+        var result = attributor.Attribute(first, second, firstProcesses, secondProcesses);
         var rate = new BundledRateTable().ResolveFor(RegionResolver.CurrentRegionCode());
         var hours = (result.End - result.Start).TotalHours;
         var top = result.Apps.Take(15).ToList();
